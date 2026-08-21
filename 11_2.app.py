@@ -4,21 +4,28 @@ import os
 from datetime import datetime
 
 # -------------------------------------------------------------------
-# 1. 설정 및 데이터베이스(JSON) 연동
+# 1. 기본 설정 및 데이터베이스(JSON) 연동
 # -------------------------------------------------------------------
 st.set_page_config(page_title="11학년 2반 학급 웹사이트", page_icon="🏫", layout="wide")
 
 DATA_FILE = "class_data.json"
-ADMIN_PASSWORD = "1234"  # 선생님 관리자 비밀번호
+ADMIN_PASSWORD = "1120"  # [수정 5] 선생님 관리자 비밀번호 변경
+
+# [수정 1] 선택과목 목록 정의
+SUBJECTS = [
+    "International Business", "Introduction to Biology", "Introduction to Chemistry",
+    "Practical Academic Reading", "Practical English Grammar", "미적분II",
+    "세포와 물질대사", "현대사회와 윤리", "확률과 통계", "물리학 실험",
+    "미디어와 비판적사고", "주제 탐구 독서", "미술 전공 실기 응용", "세계 시민과 지리",
+    "소프트웨어와 생활", "화학 실험", "삶과 글쓰기", "물질과 에너지",
+    "실용 베트남어", "정치", "경제"
+]
 
 default_data = {
     "schedules": [],
     "board": [],
     "gallery": [],
-    "subject_chem": [],
-    "subject_soc": [],
-    "subject_jp": [],
-    "subject_code": []
+    "subject_posts": {}  # 과목별 데이터 통합 저장
 }
 
 def load_data():
@@ -27,7 +34,10 @@ def load_data():
             json.dump(default_data, f, ensure_ascii=False, indent=4)
         return default_data
     with open(DATA_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        data = json.load(f)
+        if "subject_posts" not in data:
+            data["subject_posts"] = {}
+        return data
 
 def save_data(data):
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
@@ -36,7 +46,7 @@ def save_data(data):
 data = load_data()
 
 # -------------------------------------------------------------------
-# 2. 사이드바 (모드 변경 및 안내)
+# 2. 사이드바 (관리자 모드 접속)
 # -------------------------------------------------------------------
 st.sidebar.title("🏫 11학년 2반")
 mode = st.sidebar.radio("모드 선택", ["학생 모드 👩‍🎓", "선생님(관리자) 모드 👨‍🏫"])
@@ -48,18 +58,19 @@ if mode == "선생님(관리자) 모드 👨‍🏫":
         st.sidebar.success("관리자 인증 성공!")
         is_admin = True
     elif pw:
-        st.sidebar.error("비밀번호가 틀렸습니다.")
+        st.sidebar.error("비밀번호가 올바르지 않습니다.")
 
 st.sidebar.divider()
-st.sidebar.info("💡 실시간 학급 데이터가 서버에 자동 저장됩니다.")
+st.sidebar.info("💡 모든 게시글 및 일정 데이터는 서버에 자동 저장됩니다.")
 
 # -------------------------------------------------------------------
-# 3. 메인 화면 (헤더 및 탭 구성을 통한 페이지 이동)
+# 3. 메인 화면 및 탭 구성
 # -------------------------------------------------------------------
 st.title("✨ 11학년 2반 학급 공간")
 
+# [수정 4] '주요 일정' -> '공통 일정'으로 명칭 변경
 tab_home, tab_schedule, tab_subject, tab_meal, tab_gallery, tab_board = st.tabs([
-    "🏠 대시보드", "📅 주요 일정", "📚 선택과목", "🍱 급식/생일", "📸 사진첩", "📮 익명 건의함"
+    "🏠 대시보드", "📅 공통 일정", "📚 선택과목", "🍱 급식/생일", "📸 사진첩", "📮 익명 건의함"
 ])
 
 # -------------------------------------------------------------------
@@ -69,7 +80,8 @@ with tab_home:
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📅 최근 학급 일정")
+        # [수정 4] 명칭 변경
+        st.subheader("📅 최근 공통 일정")
         schedules = sorted(data["schedules"], key=lambda x: (not x.get("pinned", False), x.get("id", 0)), reverse=True)
         if schedules:
             for s in schedules[:3]:
@@ -78,28 +90,35 @@ with tab_home:
         else:
             st.caption("등록된 일정이 없습니다.")
 
+        # [수정 3] 급식 메뉴 변경
         st.subheader("🍱 오늘의 급식")
-        st.info("발아현미밥 · 돈육김치찌개 · 수제치즈돈까스 · 마카로니콘샐러드 · 깍두기 · 멜론")
+        st.info("흑미밥 · 열무된장국 · 삼겹살구이 · 콩나물파채무침 · 볶음김치 · 상추쌈(추가배식대) · 수박")
 
     with col2:
-        st.subheader("🎂 이번 달 생일")
-        st.success("🎉 8월 12일: 김철수 | 🎉 8월 25일: 이영희")
+        # [수정 2] 생일 정보 변경
+        st.subheader("🎂 학급 생일 안내")
+        st.caption("이번 달(8월) 생일자는 없습니다.")
+        st.success("🎉 **지난 달(7월) 생일자**\n- 7월 15일: 구소명\n- 7월 27일: 김재영")
 
-        st.subheader("📢 최신 과목 공지")
-        for sub_name, sub_key in [("화학 I", "subject_chem"), ("사회·문화", "subject_soc"), ("일본어 I", "subject_jp"), ("프로그래밍", "subject_code")]:
-            posts = data.get(sub_key, [])
-            latest = posts[-1]["title"] if posts else "공지 없음"
-            st.text(f"• {sub_name}: {latest}")
+        st.subheader("📢 선택과목 최신 공지")
+        has_post = False
+        for sub in SUBJECTS:
+            posts = data["subject_posts"].get(sub, [])
+            if posts:
+                st.text(f"• [{sub}] {posts[-1]['title']}")
+                has_post = True
+        if not has_post:
+            st.caption("등록된 선택과목 공지가 없습니다.")
 
 # -------------------------------------------------------------------
-# TAB 2: 주요 일정
+# TAB 2: 공통 일정 [수정 4]
 # -------------------------------------------------------------------
 with tab_schedule:
-    st.subheader("📅 전체 학급 일정")
+    st.subheader("📅 전체 공통 일정")
     
-    with st.expander("+ 새 일정 등록하기"):
+    with st.expander("+ 새 공통 일정 등록하기"):
         with st.form("add_schedule"):
-            sub = st.text_input("과목/구분 (예: 수학, 학급행사)")
+            sub = st.text_input("구분 (예: 학급행사, 시험, 동아리)", "공통")
             title = st.text_input("일정 제목")
             date_val = st.date_input("날짜")
             author = st.text_input("작성자 이름", "익명")
@@ -116,7 +135,7 @@ with tab_schedule:
                 }
                 data["schedules"].append(new_item)
                 save_data(data)
-                st.success("일정이 추가되었습니다!")
+                st.success("일정이 등록되었습니다!")
                 st.rerun()
 
     schedules = sorted(data["schedules"], key=lambda x: (not x.get("pinned", False), x.get("id", 0)), reverse=True)
@@ -140,73 +159,72 @@ with tab_schedule:
                         st.rerun()
 
 # -------------------------------------------------------------------
-# TAB 3: 선택과목 안내
+# TAB 3: 선택과목 안내 [수정 1]
 # -------------------------------------------------------------------
 with tab_subject:
-    sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs(["🧪 화학 I", "🌍 사회·문화", "🏮 일본어 I", "💻 프로그래밍"])
+    st.subheader("📚 선택과목 게시판")
+    selected_subject = st.selectbox("조회/작성할 과목을 선택하세요:", SUBJECTS)
     
-    sub_mapping = {
-        "🧪 화학 I": "subject_chem",
-        "🌍 사회·문화": "subject_soc",
-        "🏮 일본어 I": "subject_jp",
-        "💻 프로그래밍": "subject_code"
-    }
+    st.divider()
+    st.markdown(f"### 📖 {selected_subject} 공지사항")
+    
+    with st.expander(f"+ [{selected_subject}] 공지 작성하기"):
+        with st.form(f"form_{selected_subject}"):
+            t = st.text_input("제목")
+            c = st.text_area("내용")
+            a = st.text_input("작성자", "익명")
+            sub_btn = st.form_submit_button("등록")
+            if sub_btn and t:
+                if selected_subject not in data["subject_posts"]:
+                    data["subject_posts"][selected_subject] = []
+                data["subject_posts"][selected_subject].append({
+                    "id": int(datetime.now().timestamp() * 1000),
+                    "title": t, "content": c, "author": a,
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "pinned": False
+                })
+                save_data(data)
+                st.success("공지가 등록되었습니다.")
+                st.rerun()
 
-    for tab_obj, (sub_title, sub_key) in zip([sub_tab1, sub_tab2, sub_tab3, sub_tab4], sub_mapping.items()):
-        with tab_obj:
-            st.subheader(f"{sub_title} 공지사항")
-            
-            with st.expander("+ 공지 작성하기"):
-                with st.form(f"form_{sub_key}"):
-                    t = st.text_input("제목")
-                    c = st.text_area("내용")
-                    a = st.text_input("작성자", "익명")
-                    sub_btn = st.form_submit_button("등록")
-                    if sub_btn and t:
-                        data[sub_key].append({
-                            "id": int(datetime.now().timestamp() * 1000),
-                            "title": t, "content": c, "author": a,
-                            "date": datetime.now().strftime("%Y-%m-%d"),
-                            "pinned": False
-                        })
-                        save_data(data)
-                        st.rerun()
-
-            posts = sorted(data[sub_key], key=lambda x: (not x.get("pinned", False), x.get("id", 0)), reverse=True)
-            for item in posts:
-                with st.container(border=True):
-                    cols = st.columns([4, 1])
-                    with cols[0]:
-                        pin_mark = "📌 " if item.get("pinned") else ""
-                        st.markdown(f"#### {pin_mark}{item['title']}")
-                        st.write(item["content"])
-                        st.caption(f"작성자: {item['author']} | 날짜: {item['date']}")
-                    if is_admin:
-                        with cols[1]:
-                            if st.button("고정/해제", key=f"pin_{sub_key}_{item['id']}"):
-                                item["pinned"] = not item.get("pinned", False)
-                                save_data(data)
-                                st.rerun()
-                            if st.button("삭제 🗑️", key=f"del_{sub_key}_{item['id']}"):
-                                data[sub_key] = [i for i in data[sub_key] if i["id"] != item["id"]]
-                                save_data(data)
-                                st.rerun()
+    posts = data["subject_posts"].get(selected_subject, [])
+    posts_sorted = sorted(posts, key=lambda x: (not x.get("pinned", False), x.get("id", 0)), reverse=True)
+    
+    if posts_sorted:
+        for item in posts_sorted:
+            with st.container(border=True):
+                cols = st.columns([4, 1])
+                with cols[0]:
+                    pin_mark = "📌 " if item.get("pinned") else ""
+                    st.markdown(f"#### {pin_mark}{item['title']}")
+                    st.write(item["content"])
+                    st.caption(f"작성자: {item['author']} | 날짜: {item['date']}")
+                if is_admin:
+                    with cols[1]:
+                        if st.button("고정/해제", key=f"pin_sub_{item['id']}"):
+                            item["pinned"] = not item.get("pinned", False)
+                            save_data(data)
+                            st.rerun()
+                        if st.button("삭제 🗑️", key=f"del_sub_{item['id']}"):
+                            data["subject_posts"][selected_subject] = [i for i in data["subject_posts"][selected_subject] if i["id"] != item["id"]]
+                            save_data(data)
+                            st.rerun()
+    else:
+        st.info("등록된 공지가 없습니다.")
 
 # -------------------------------------------------------------------
-# TAB 4: 급식 / 생일
+# TAB 4: 급식 / 생일 [수정 2, 3]
 # -------------------------------------------------------------------
 with tab_meal:
-    st.subheader("🍱 이번 주 급식표")
-    st.table({
-        "요일": ["월요일", "화요일", "수요일", "목요일", "금요일"],
-        "메뉴": [
-            "치킨마요덮밥 · 팽이버섯장국 · 떡볶이",
-            "발아현미밥 · 돈육김치찌개 · 수제치즈돈까스",
-            "짜장밥 · 계란파국 · 탕수육 · 샐러드",
-            "비빔밥 · 콩나물국 · LA갈비구이",
-            "해물칼국수 · 미니주먹밥 · 겉절이"
-        ]
-    })
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.subheader("🍱 오늘의 급식")
+        st.info("🍚 **흑미밥**\n\n🥣 **열무된장국**\n\n🥩 **삼겹살구이**\n\n🥗 **콩나물파채무침**\n\n🥬 **볶음김치**\n\n🥬 **상추쌈 (추가배식대)**\n\n🍉 **수박**")
+    
+    with col_b:
+        st.subheader("🎂 생일 안내")
+        st.warning("📅 **8월 생일자**: 없음")
+        st.success("🎉 **7월 생일자**\n- 7월 15일: **구소명**\n- 7월 27일: **김재영**")
 
 # -------------------------------------------------------------------
 # TAB 5: 사진첩
