@@ -4,14 +4,18 @@ import os
 from datetime import datetime
 
 # -------------------------------------------------------------------
-# 1. 기본 설정 및 데이터베이스(JSON) 연동
+# 1. 기본 설정 및 데이터베이스(JSON/업로드 폴더) 연동
 # -------------------------------------------------------------------
 st.set_page_config(page_title="11학년 2반 학급 웹사이트", page_icon="🏫", layout="wide")
 
 DATA_FILE = "class_data.json"
-ADMIN_PASSWORD = "1120"  # [수정 5] 선생님 관리자 비밀번호 변경
+UPLOAD_DIR = "uploads"  # 이미지 저장 폴더
+ADMIN_PASSWORD = "1120"
 
-# [수정 1] 선택과목 목록 정의
+# 업로드 폴더 생성
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
+
 SUBJECTS = [
     "International Business", "Introduction to Biology", "Introduction to Chemistry",
     "Practical Academic Reading", "Practical English Grammar", "미적분II",
@@ -25,7 +29,7 @@ default_data = {
     "schedules": [],
     "board": [],
     "gallery": [],
-    "subject_posts": {}  # 과목별 데이터 통합 저장
+    "subject_posts": {}
 }
 
 def load_data():
@@ -46,7 +50,7 @@ def save_data(data):
 data = load_data()
 
 # -------------------------------------------------------------------
-# 2. 사이드바 (관리자 모드 접속)
+# 2. 사이드바
 # -------------------------------------------------------------------
 st.sidebar.title("🏫 11학년 2반")
 mode = st.sidebar.radio("모드 선택", ["학생 모드 👩‍🎓", "선생님(관리자) 모드 👨‍🏫"])
@@ -61,14 +65,13 @@ if mode == "선생님(관리자) 모드 👨‍🏫":
         st.sidebar.error("비밀번호가 올바르지 않습니다.")
 
 st.sidebar.divider()
-st.sidebar.info("💡 모든 게시글 및 일정 데이터는 서버에 자동 저장됩니다.")
+st.sidebar.info("💡 모든 게시글 및 사진은 서버에 자동 저장됩니다.")
 
 # -------------------------------------------------------------------
 # 3. 메인 화면 및 탭 구성
 # -------------------------------------------------------------------
 st.title("✨ 11학년 2반 학급 공간")
 
-# [수정 4] '주요 일정' -> '공통 일정'으로 명칭 변경
 tab_home, tab_schedule, tab_subject, tab_meal, tab_gallery, tab_board = st.tabs([
     "🏠 대시보드", "📅 공통 일정", "📚 선택과목", "🍱 급식/생일", "📸 사진첩", "📮 익명 건의함"
 ])
@@ -80,9 +83,9 @@ with tab_home:
     col1, col2 = st.columns(2)
     
     with col1:
-        # [수정 4] 명칭 변경
         st.subheader("📅 최근 공통 일정")
-        schedules = sorted(data["schedules"], key=lambda x: (not x.get("pinned", False), x.get("id", 0)), reverse=True)
+        # 고정글 상단 배치 정렬 (1: pinned DESC, 2: id DESC)
+        schedules = sorted(data["schedules"], key=lambda x: (x.get("pinned", False), x.get("id", 0)), reverse=True)
         if schedules:
             for s in schedules[:3]:
                 pin = "📌 " if s.get("pinned") else ""
@@ -90,12 +93,10 @@ with tab_home:
         else:
             st.caption("등록된 일정이 없습니다.")
 
-        # [수정 3] 급식 메뉴 변경
         st.subheader("🍱 오늘의 급식")
         st.info("흑미밥 · 열무된장국 · 삼겹살구이 · 콩나물파채무침 · 볶음김치 · 상추쌈(추가배식대) · 수박")
 
     with col2:
-        # [수정 2] 생일 정보 변경
         st.subheader("🎂 학급 생일 안내")
         st.caption("이번 달(8월) 생일자는 없습니다.")
         st.success("🎉 **지난 달(7월) 생일자**\n- 7월 15일: 구소명\n- 7월 27일: 김재영")
@@ -105,13 +106,16 @@ with tab_home:
         for sub in SUBJECTS:
             posts = data["subject_posts"].get(sub, [])
             if posts:
-                st.text(f"• [{sub}] {posts[-1]['title']}")
+                # 과목별 최신글 추출
+                p = sorted(posts, key=lambda x: (x.get("pinned", False), x.get("id", 0)), reverse=True)[0]
+                pin = "📌 " if p.get("pinned") else ""
+                st.text(f"• [{sub}] {pin}{p['title']}")
                 has_post = True
         if not has_post:
             st.caption("등록된 선택과목 공지가 없습니다.")
 
 # -------------------------------------------------------------------
-# TAB 2: 공통 일정 [수정 4]
+# TAB 2: 공통 일정
 # -------------------------------------------------------------------
 with tab_schedule:
     st.subheader("📅 전체 공통 일정")
@@ -138,18 +142,21 @@ with tab_schedule:
                 st.success("일정이 등록되었습니다!")
                 st.rerun()
 
-    schedules = sorted(data["schedules"], key=lambda x: (not x.get("pinned", False), x.get("id", 0)), reverse=True)
+    # 상단 고정 완벽 정렬: (pinned가 True인 것이 먼저, 그 다음 id 역순)
+    schedules = sorted(data["schedules"], key=lambda x: (1 if x.get("pinned") else 0, x.get("id", 0)), reverse=True)
+    
     for item in schedules:
         with st.container(border=True):
             cols = st.columns([4, 1])
             with cols[0]:
-                pin_mark = "📌 [고정] " if item.get("pinned") else ""
+                pin_mark = "📌 [고정 상단] " if item.get("pinned") else ""
                 st.markdown(f"### {pin_mark}{item['title']}")
                 st.caption(f"구분: {item['subject']} | 작성자: {item['author']} | 날짜: {item['date']}")
             
             if is_admin:
                 with cols[1]:
-                    if st.button("고정/해제", key=f"pin_sch_{item['id']}"):
+                    pin_label = "📌 고정 해제" if item.get("pinned") else "📌 상단 고정"
+                    if st.button(pin_label, key=f"pin_sch_{item['id']}"):
                         item["pinned"] = not item.get("pinned", False)
                         save_data(data)
                         st.rerun()
@@ -159,7 +166,7 @@ with tab_schedule:
                         st.rerun()
 
 # -------------------------------------------------------------------
-# TAB 3: 선택과목 안내 [수정 1]
+# TAB 3: 선택과목 안내
 # -------------------------------------------------------------------
 with tab_subject:
     st.subheader("📚 선택과목 게시판")
@@ -188,20 +195,22 @@ with tab_subject:
                 st.rerun()
 
     posts = data["subject_posts"].get(selected_subject, [])
-    posts_sorted = sorted(posts, key=lambda x: (not x.get("pinned", False), x.get("id", 0)), reverse=True)
+    # 상단 고정 완벽 정렬
+    posts_sorted = sorted(posts, key=lambda x: (1 if x.get("pinned") else 0, x.get("id", 0)), reverse=True)
     
     if posts_sorted:
         for item in posts_sorted:
             with st.container(border=True):
                 cols = st.columns([4, 1])
                 with cols[0]:
-                    pin_mark = "📌 " if item.get("pinned") else ""
+                    pin_mark = "📌 [고정 상단] " if item.get("pinned") else ""
                     st.markdown(f"#### {pin_mark}{item['title']}")
                     st.write(item["content"])
                     st.caption(f"작성자: {item['author']} | 날짜: {item['date']}")
                 if is_admin:
                     with cols[1]:
-                        if st.button("고정/해제", key=f"pin_sub_{item['id']}"):
+                        pin_label = "📌 고정 해제" if item.get("pinned") else "📌 상단 고정"
+                        if st.button(pin_label, key=f"pin_sub_{item['id']}"):
                             item["pinned"] = not item.get("pinned", False)
                             save_data(data)
                             st.rerun()
@@ -213,7 +222,7 @@ with tab_subject:
         st.info("등록된 공지가 없습니다.")
 
 # -------------------------------------------------------------------
-# TAB 4: 급식 / 생일 [수정 2, 3]
+# TAB 4: 급식 / 생일
 # -------------------------------------------------------------------
 with tab_meal:
     col_a, col_b = st.columns(2)
@@ -227,31 +236,50 @@ with tab_meal:
         st.success("🎉 **7월 생일자**\n- 7월 15일: **구소명**\n- 7월 27일: **김재영**")
 
 # -------------------------------------------------------------------
-# TAB 5: 사진첩
+# TAB 5: 사진첩 (이미지 첨부 및 업로드 기능 반영)
 # -------------------------------------------------------------------
 with tab_gallery:
     st.subheader("📸 학급 활동 기록")
     with st.expander("+ 사진/기록 올리기"):
-        with st.form("add_gallery"):
+        with st.form("add_gallery", clear_on_submit=True):
             gt = st.text_input("제목")
             gd = st.text_area("설명")
+            uploaded_file = st.file_uploader("사진 파일 선택 (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
             g_btn = st.form_submit_button("등록")
+            
             if g_btn and gt:
+                img_path = None
+                if uploaded_file is not None:
+                    # 파일 저장
+                    file_filename = f"{int(datetime.now().timestamp())}_{uploaded_file.name}"
+                    img_path = os.path.join(UPLOAD_DIR, file_filename)
+                    with open(img_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+
                 data["gallery"].append({
                     "id": int(datetime.now().timestamp() * 1000),
-                    "title": gt, "desc": gd,
+                    "title": gt,
+                    "desc": gd,
+                    "img_path": img_path,
                     "date": datetime.now().strftime("%Y-%m-%d")
                 })
                 save_data(data)
+                st.success("사진이 성공적으로 업로드되었습니다!")
                 st.rerun()
 
     for item in reversed(data["gallery"]):
         with st.container(border=True):
             st.markdown(f"#### 🖼️ {item['title']}")
+            if item.get("img_path") and os.path.exists(item["img_path"]):
+                st.image(item["img_path"], use_column_width=True)
             st.write(item["desc"])
             st.caption(f"등록일: {item['date']}")
+            
             if is_admin:
                 if st.button("삭제 🗑️", key=f"del_gal_{item['id']}"):
+                    # 실제 이미지 파일 삭제
+                    if item.get("img_path") and os.path.exists(item["img_path"]):
+                        os.remove(item["img_path"])
                     data["gallery"] = [i for i in data["gallery"] if i["id"] != item["id"]]
                     save_data(data)
                     st.rerun()
