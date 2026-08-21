@@ -84,7 +84,6 @@ with tab_home:
     
     with col1:
         st.subheader("📅 최근 공통 일정")
-        # 고정글 상단 배치 정렬 (1: pinned DESC, 2: id DESC)
         schedules = sorted(data["schedules"], key=lambda x: (x.get("pinned", False), x.get("id", 0)), reverse=True)
         if schedules:
             for s in schedules[:3]:
@@ -106,7 +105,6 @@ with tab_home:
         for sub in SUBJECTS:
             posts = data["subject_posts"].get(sub, [])
             if posts:
-                # 과목별 최신글 추출
                 p = sorted(posts, key=lambda x: (x.get("pinned", False), x.get("id", 0)), reverse=True)[0]
                 pin = "📌 " if p.get("pinned") else ""
                 st.text(f"• [{sub}] {pin}{p['title']}")
@@ -142,7 +140,6 @@ with tab_schedule:
                 st.success("일정이 등록되었습니다!")
                 st.rerun()
 
-    # 상단 고정 완벽 정렬: (pinned가 True인 것이 먼저, 그 다음 id 역순)
     schedules = sorted(data["schedules"], key=lambda x: (1 if x.get("pinned") else 0, x.get("id", 0)), reverse=True)
     
     for item in schedules:
@@ -195,7 +192,6 @@ with tab_subject:
                 st.rerun()
 
     posts = data["subject_posts"].get(selected_subject, [])
-    # 상단 고정 완벽 정렬
     posts_sorted = sorted(posts, key=lambda x: (1 if x.get("pinned") else 0, x.get("id", 0)), reverse=True)
     
     if posts_sorted:
@@ -236,7 +232,7 @@ with tab_meal:
         st.success("🎉 **7월 생일자**\n- 7월 15일: **구소명**\n- 7월 27일: **김재영**")
 
 # -------------------------------------------------------------------
-# TAB 5: 사진첩 (이미지 첨부 및 업로드 기능 반영)
+# TAB 5: 사진첩 (수정된 안전한 이미지 로딩)
 # -------------------------------------------------------------------
 with tab_gallery:
     st.subheader("📸 학급 활동 기록")
@@ -250,7 +246,6 @@ with tab_gallery:
             if g_btn and gt:
                 img_path = None
                 if uploaded_file is not None:
-                    # 파일 저장
                     file_filename = f"{int(datetime.now().timestamp())}_{uploaded_file.name}"
                     img_path = os.path.join(UPLOAD_DIR, file_filename)
                     with open(img_path, "wb") as f:
@@ -270,16 +265,24 @@ with tab_gallery:
     for item in reversed(data["gallery"]):
         with st.container(border=True):
             st.markdown(f"#### 🖼️ {item['title']}")
+            
+            # 이미지 출력 처리 (use_container_width 적용 및 예외 처리)
             if item.get("img_path") and os.path.exists(item["img_path"]):
-                st.image(item["img_path"], use_column_width=True)
+                try:
+                    st.image(item["img_path"], use_container_width=True)
+                except Exception:
+                    st.caption("🖼️ (이미지를 불러올 수 없습니다)")
+            
             st.write(item["desc"])
             st.caption(f"등록일: {item['date']}")
             
             if is_admin:
                 if st.button("삭제 🗑️", key=f"del_gal_{item['id']}"):
-                    # 실제 이미지 파일 삭제
                     if item.get("img_path") and os.path.exists(item["img_path"]):
-                        os.remove(item["img_path"])
+                        try:
+                            os.remove(item["img_path"])
+                        except Exception:
+                            pass
                     data["gallery"] = [i for i in data["gallery"] if i["id"] != item["id"]]
                     save_data(data)
                     st.rerun()
